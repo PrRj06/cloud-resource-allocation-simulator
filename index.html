@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloudOptima — Resource Allocation Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+  <script src="script.js" defer></script>
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="nav-brand">
+      <div class="logo-icon"><i class="fas fa-cloud"></i></div>
+      Cloud<span>Optima</span>
+    </div>
+
+    <div class="nav-center">
+      <div class="sim-status">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Idle</span>
+      </div>
+      <div class="algo-badge" id="algoDisplay">Round Robin</div>
+    </div>
+
+    <div class="nav-right">
+      <button class="btn btn-success" id="btnStart" onclick="startSim()">
+        <i class="fas fa-play"></i> Start
+      </button>
+      <button class="btn btn-warning" id="btnPause" onclick="pauseSim()" disabled>
+        <i class="fas fa-pause"></i> Pause
+      </button>
+      <button class="btn btn-secondary" onclick="resetSim()">
+        <i class="fas fa-rotate-left"></i> Reset
+      </button>
+      <div class="dark-toggle" onclick="toggleDark()" title="Toggle dark mode">
+        <i class="fas fa-moon" id="darkIcon"></i>
+      </div>
+    </div>
+  </nav>
+
+  <div class="app-body">
+    <aside class="sidebar">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <div class="icon icon-blue"><i class="fas fa-server"></i></div>
+            VM Configuration
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Number of VMs</label>
+            <input type="number" id="numVMs" value="4" min="1" max="12">
+          </div>
+          <div class="form-group">
+            <label>CPU Capacity (cores)</label>
+            <input type="number" id="vmCPU" value="8" min="1" max="64">
+          </div>
+          <div class="form-group">
+            <label>Memory Capacity (GB)</label>
+            <input type="number" id="vmMem" value="16" min="1" max="256">
+          </div>
+          <div class="form-group">
+            <label>Allocation Algorithm</label>
+            <div class="algo-select-wrap">
+              <select id="algoSel" onchange="updateAlgoDisplay()">
+                <option value="round-robin">Round Robin</option>
+                <option value="first-fit">First Fit</option>
+                <option value="best-fit">Best Fit</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="initVMs()">
+            <i class="fas fa-bolt"></i> Initialize VMs
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <div class="icon icon-accent"><i class="fas fa-layer-group"></i></div>
+            Workload Input
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Task CPU Req (cores)</label>
+            <input type="number" id="taskCPU" value="2" min="1" max="32">
+          </div>
+          <div class="form-group">
+            <label>Task Memory Req (GB)</label>
+            <input type="number" id="taskMem" value="4" min="1" max="128">
+          </div>
+          <div class="form-group">
+            <label>Demand Level</label>
+            <div class="demand-group">
+              <button class="demand-btn active-low" onclick="setDemand('low',this)">Low</button>
+              <button class="demand-btn" onclick="setDemand('med',this)">Medium</button>
+              <button class="demand-btn" onclick="setDemand('high',this)">High</button>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="addTask()">
+              <i class="fas fa-plus"></i> Add Task
+            </button>
+            <button class="btn btn-secondary" onclick="autoGenWorkload()">
+              <i class="fas fa-wand-magic-sparkles"></i> Auto
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <div class="icon icon-yellow"><i class="fas fa-sliders"></i></div>
+            Simulation Controls
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="speed-row">
+            <span class="speed-label"><i class="fas fa-gauge-high"></i> Speed</span>
+            <div class="range-row" style="flex:1">
+              <input type="range" id="speedSlider" min="1" max="5" value="2" oninput="updateSpeed(this.value)">
+              <span class="range-val" id="speedVal">2x</span>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="section-title">Task Release Rate</div>
+          <div class="range-row">
+            <input type="range" id="rateSlider" min="1" max="10" value="3" oninput="updateRate(this.value)">
+            <span class="range-val" id="rateVal">3/s</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <div class="icon icon-green"><i class="fas fa-terminal"></i></div>
+            Activity Log
+          </div>
+          <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="clearLog()">
+            Clear
+          </button>
+        </div>
+        <div class="card-body" style="padding:12px">
+          <div class="task-log" id="taskLog">
+            <div class="log-entry">System initialized — ready to simulate</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-section">
+      <div class="metrics-row">
+        <div class="metric-card m-blue">
+          <div class="metric-label">Total Utilization</div>
+          <div class="metric-value" id="metricUtil">0%</div>
+          <div class="metric-sub">avg across all VMs</div>
+        </div>
+        <div class="metric-card m-green">
+          <div class="metric-label">Active VMs</div>
+          <div class="metric-value" id="metricVMs">0</div>
+          <div class="metric-sub" id="metricVMsSub">of 0 initialized</div>
+        </div>
+        <div class="metric-card m-yellow">
+          <div class="metric-label">Tasks Allocated</div>
+          <div class="metric-value" id="metricTasks">0</div>
+          <div class="metric-sub" id="metricTasksSub">0 failed</div>
+        </div>
+        <div class="metric-card m-red">
+          <div class="metric-label">Efficiency Score</div>
+          <div class="metric-value" id="metricEff">—</div>
+          <div class="metric-sub">allocation quality</div>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <div class="icon icon-blue"><i class="fas fa-chart-bar"></i></div>
+              CPU & Memory per VM
+            </div>
+          </div>
+          <div class="card-body" style="padding-bottom:20px">
+            <div class="chart-wrap">
+              <canvas id="barChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <div class="icon icon-accent"><i class="fas fa-chart-line"></i></div>
+              System Load Over Time
+            </div>
+          </div>
+          <div class="card-body" style="padding-bottom:20px">
+            <div class="chart-wrap">
+              <canvas id="lineChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <div class="icon icon-green"><i class="fas fa-microchip"></i></div>
+            VM Status Overview
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">
+            <span class="chip" style="background:var(--green-light);color:var(--green)">● Low</span>
+            <span class="chip" style="background:var(--yellow-light);color:var(--yellow);margin:0 4px">● Med</span>
+            <span class="chip" style="background:var(--red-light);color:var(--red)">● High</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="vm-grid" id="vmGrid">
+            <div class="empty-state" style="grid-column:1/-1">
+              <i class="fas fa-server"></i>
+              <div>No VMs initialized.<br>Configure and click <strong>Initialize VMs</strong>.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast"></div>
+
+</body>
+</html>
