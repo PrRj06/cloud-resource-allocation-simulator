@@ -15,6 +15,37 @@ let darkMode = false;
 let barChart;
 let lineChart;
 
+function getTaskDuration() {
+  return parseInt(document.getElementById('taskDuration').value, 10) || 10;
+}
+
+function expireTasks() {
+  const now = Date.now();
+  let freed = 0;
+
+  for (const vm of vms) {
+    const remaining = [];
+    for (const task of vm.tasks) {
+      if (now >= task.expiresAt) {
+        vm.cpuUsed = Math.max(0, vm.cpuUsed - task.cpuReq);
+        vm.memUsed = Math.max(0, vm.memUsed - task.memReq);
+        freed++;
+      } else {
+        remaining.push(task);
+      }
+    }
+
+    if (remaining.length !== vm.tasks.length) {
+      const completed = vm.tasks.length - remaining.length;
+      log(`${completed} task(s) completed on ${vm.name}`, 'ok');
+    }
+
+    vm.tasks = remaining;
+  }
+
+  return freed;
+}
+
 function initVMs() {
   const n = parseInt(document.getElementById('numVMs').value, 10) || 4;
   const cpu = parseInt(document.getElementById('vmCPU').value, 10) || 8;
@@ -42,7 +73,7 @@ function initVMs() {
   showToast(`${n} VMs ready`);
 }
 
-function allocateTask(cpuReq, memReq) {
+function allocateTask(cpuReq, memReq, durationSec = getTaskDuration()) {
   if (!vms.length) {
     log('No VMs initialized!', 'err');
     return false;
@@ -78,9 +109,14 @@ function allocateTask(cpuReq, memReq) {
   if (target) {
     target.cpuUsed += cpuReq;
     target.memUsed += memReq;
-    target.tasks.push({ cpuReq, memReq });
+    target.tasks.push({
+      cpuReq,
+      memReq,
+      durationSec,
+      expiresAt: Date.now() + (durationSec * 1000),
+    });
     totalAllocated++;
-    log(`Task [${cpuReq}c/${memReq}GB] → ${target.name}`, 'ok');
+    log(`Task [${cpuReq}c/${memReq}GB, ${durationSec}s] → ${target.name}`, 'ok');
     return true;
   }
 
@@ -96,7 +132,8 @@ function addTask() {
   }
   const cpu = parseInt(document.getElementById('taskCPU').value, 10) || 1;
   const mem = parseInt(document.getElementById('taskMem').value, 10) || 1;
-  allocateTask(cpu, mem);
+  const duration = getTaskDuration();
+  allocateTask(cpu, mem, duration);
   refreshAll();
 }
 
@@ -115,7 +152,8 @@ function autoGenWorkload() {
     const mult = demandLevel === 'low' ? 0.25 : demandLevel === 'med' ? 0.45 : 0.7;
     const c = Math.max(1, Math.round(Math.random() * maxCPU * mult));
     const m = Math.max(1, Math.round(Math.random() * maxMem * mult));
-    if (allocateTask(c, m)) ok++;
+    const duration = getTaskDuration();
+    if (allocateTask(c, m, duration)) ok++;
   }
 
   log(`Auto-generated ${count} tasks (${ok} placed, ${count - ok} failed)`, ok === count ? 'ok' : 'warn');
@@ -155,12 +193,13 @@ function scheduleLoop() {
     const maxMem = vms[0]?.memCap || 16;
 
     for (let i = 0; i < Math.ceil(taskRate / 3); i++) {
+      expireTasks();
       const mult = demandLevel === 'low' ? 0.2 : demandLevel === 'med' ? 0.4 : 0.65;
       const c = Math.max(1, Math.round(Math.random() * maxCPU * mult));
       const m = Math.max(1, Math.round(Math.random() * maxMem * mult));
 
       if (Math.random() < 0.3) freeRandomTask();
-      allocateTask(c, m);
+      allocateTask(c, m, getTaskDuration());
     }
 
     refreshAll();
@@ -277,6 +316,7 @@ function renderVMGrid() {
       <div class="vm-tasks">
         <i class="fas fa-list-check"></i>
         ${vm.tasks.length} task${vm.tasks.length !== 1 ? 's' : ''} running
+        ${vm.tasks.length > 0 ? `· next done in ${Math.max(0, Math.ceil((Math.min(...vm.tasks.map(task => task.expiresAt)) - Date.now()) / 1000))}s` : ''}
       </div>
     </div>`;
   }).join('');
